@@ -1,0 +1,1907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Complete Sans Fight - Undertale</title>
+  <meta name="viewport" content="width=640, initial-scale=1.0">
+  <style>
+    @font-face {
+      font-family: 'Determination';
+      src: url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/webfonts/fa-regular-400.woff2') format('woff2');
+      font-weight: normal;
+      font-style: normal;
+    }
+    
+    body, html { 
+      background: #000; 
+      margin: 0; 
+      padding: 0; 
+      overflow: hidden; 
+      font-family: 'Determination', monospace;
+    }
+    
+    #gameCanvas { 
+      display: block; 
+      margin: 0 auto; 
+      image-rendering: pixelated; 
+      background: #000; 
+    }
+    
+    #hud { 
+      position: absolute; 
+      left: 50%; 
+      transform: translateX(-50%); 
+      top: 10px; 
+      width: 600px;
+      text-align: left; 
+      font-family: 'Determination', monospace; 
+      color: #fff; 
+      font-size: 20px; 
+      z-index: 10; 
+    }
+    
+    #menu { 
+      position: absolute; 
+      left: 50%; 
+      transform: translateX(-50%); 
+      bottom: 0; 
+      width: 640px; 
+      height: 60px; 
+      display: flex; 
+      background: #000;
+      font-family: 'Determination', monospace; 
+      color: #fff; 
+      font-size: 16px; 
+      border-top: 3px solid #fff; 
+      justify-content: space-evenly; 
+      align-items: center; 
+    }
+    
+    #menu .selected { 
+      color: #ffff00; 
+      text-decoration: underline; 
+    }
+    
+    #dialog { 
+      position: absolute; 
+      left: 50%; 
+      transform: translateX(-50%); 
+      bottom: 60px; 
+      width: 640px; 
+      background: #000; 
+      border: 3px solid #fff;
+      min-height: 56px; 
+      font-family: 'Determination', monospace; 
+      color: #fff; 
+      font-size: 17px; 
+      padding: 8px 24px; 
+      z-index: 12; 
+      box-sizing: border-box; 
+      display: none; 
+    }
+    
+    .sans-face {
+      position: absolute;
+      left: calc(50% - 40px);
+      top: 40px;
+      width: 80px;
+      height: 80px;
+      z-index: 5;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <span id="lv">LV 19</span>   <span id="hpbar"></span>   <span id="hp">HP 92/92</span>
+  </div>
+  <canvas id="gameCanvas" width="640" height="480"></canvas>
+  <div id="menu">
+    <span id="menu-fight" class="selected">FIGHT</span>
+    <span id="menu-act">ACT</span>
+    <span id="menu-item">ITEM</span>
+    <span id="menu-mercy">MERCY</span>
+  </div>
+  <div id="dialog">* you're gonna have a bad time.</div>
+  <script>
+    // --- Complete Sans Fight Engine ---
+
+    const CANVAS_WIDTH = 640, CANVAS_HEIGHT = 480;
+    const ARENA = { x: 170, y: 150, w: 300, h: 130 };
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const player = { 
+      x: 320, 
+      y: 320, 
+      size: 16, 
+      speed: 4, 
+      invuln: 0,
+      gravity: 0,
+      vy: 0,
+      blue: false,
+      platform: null
+    };
+    
+    let hp = 92, maxhp = 92;
+    let karma = 0;
+    let menuIndex = 0;
+    let dialogQueue = [
+      "* It's a beautiful day outside.",
+      "* Birds are singing, flowers are blooming...",
+      "* On days like these, kids like you...",
+      "* Should be burning in hell."
+    ];
+    let phase = "dialog";
+    let attackPhase = 0;
+    let currentAttack = null;
+    let attacks = [];
+    let platforms = [];
+    let bones = [];
+    let blasters = [];
+    let particles = [];
+    let attackTimer = 0;
+    let attackCount = 0;
+    let gameState = {
+      turn: 0,
+      sansDodged: false,
+      mercyUsed: false,
+      itemsUsed: 0,
+      actionsUsed: []
+    };
+    
+    let soundEffects = {
+      hit: new Audio('data:audio/wav;base64,UklGRiQDAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YwAAAAA='),
+      blaster: new Audio('data:audio/wav;base64,UklGRiQDAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YwAAAAA='),
+      boneHit: new Audio('data:audio/wav;base64,UklGRiQDAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YwAAAAA=')
+    };
+
+    // --- TRUE "CHONKY" UNDERTALE SANS SPRITE ---
+    // 0: empty, 1: white, 2: black, 3: blue, 4: gray, 5: outline, 6: face shadow, 7: slipper shadow
+    const sansUndertale = [
+      "0000005555555555555550000000",
+      "0000555555555555555555500000",
+      "0005555551111111155555550000",
+      "0055551111111111111115555000",
+      "0555111122222222221111155500",
+      "0511222222222222222211115500",
+      "5122222221111112222222111550",
+      "5122222221111112222222111550",
+      "1122333333333333333333222111",
+      "1233333333333333333333333211",
+      "1233333333333333333333333321",
+      "1333333333333333333333333331",
+      "1333333444444444444444333331",
+      "1333333444444444444444333331",
+      "1133333444444444444444333311",
+      "1113333444444444444444333111",
+      "1111333444444444444444331111",
+      "1111133444444444444444311111",
+      "1111113444444444444444111111",
+      "1111111344444444444441111111",
+      "1111111133333333333311111111",
+      "0005555122222222222155550000",
+      "0055122222222222222222115000",
+      "0551222222222222222222221500",
+      "5512222222222222222222222110",
+      "5122222211111111222222222110",
+      "5122222111111111122222222110",
+      "5112221111111111112222221110",
+      "0555551110000011115555555000",
+      "0000000000000000000000000000",
+      "0000000000000000000000000000"
+    ];
+
+    const SANS_UNDERTALE_COLORS = [
+      null,           // 0: transparent
+      "#fff",         // 1: white
+      "#222",         // 2: black
+      "#3885c5",      // 3: jacket blue
+      "#bcbcbc",      // 4: shirt gray
+      "#474747",      // 5: outline/dark
+      "#dedede",      // 6: light face shadow
+      "#b8b8b8"       // 7: slipper shadow
+    ];
+
+    const SANS_EXPRESSIONS = {
+      normal: {eyeL: 7.7, eyeR: 16.5, mouth: true},
+      wink: {eyeL: -1, eyeR: 16.5, mouth: true},
+      serious: {eyeL: 7.7, eyeR: 16.5, mouth: false},
+      sweat: {eyeL: 7.7, eyeR: 16.5, mouth: true, sweat: true}
+    };
+
+    function drawUndertaleSans(centerX, y, expression = "normal") {
+      const pixel = 4;
+      const width = sansUndertale[0].length;
+      const height = sansUndertale.length;
+      const baseX = centerX - (width * pixel) / 2;
+      
+      // Draw Sans sprite
+      for (let row = 0; row < height; row++) {
+        for (let col = 0; col < width; col++) {
+          const n = parseInt(sansUndertale[row][col]);
+          if (!n) continue;
+          ctx.fillStyle = SANS_UNDERTALE_COLORS[n];
+          ctx.fillRect(baseX + col * pixel, y + row * pixel, pixel, pixel);
+        }
+      }
+      
+      // Expression details
+      const expr = SANS_EXPRESSIONS[expression] || SANS_EXPRESSIONS.normal;
+      
+      // Left eye
+      if (expr.eyeL > 0) {
+        // Blue glowing left eye
+        ctx.save();
+        ctx.globalAlpha = 0.55;
+        ctx.beginPath();
+        ctx.arc(baseX + expr.eyeL * pixel, y + 7.7 * pixel, 6, 0, Math.PI * 2);
+        ctx.fillStyle = "#3cf8ff";
+        ctx.shadowColor = "#3cf8ff";
+        ctx.shadowBlur = 16;
+        ctx.fill();
+        ctx.restore();
+        
+        // Blue highlight pupil
+        ctx.save();
+        ctx.beginPath();
+        ctx.fillStyle = "#6cf";
+        ctx.arc(baseX + expr.eyeL * pixel, y + 7.7 * pixel, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      
+      // Right eye
+      if (expr.eyeR > 0) {
+        ctx.save();
+        ctx.fillStyle = "#fff";
+        ctx.beginPath();
+        ctx.arc(baseX + expr.eyeR * pixel, y + 7.7 * pixel, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      
+      // Sweat drop
+      if (expr.sweat) {
+        ctx.save();
+        ctx.fillStyle = "#acf";
+        ctx.beginPath();
+        ctx.arc(baseX + 20 * pixel, y + 6 * pixel, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // BONE ATTACK
+    function drawBone(x, y, width = 8, height = 32, color = "#fff") {
+      ctx.save();
+      ctx.translate(x, y);
+      
+      // Draw bone shaft
+      ctx.fillStyle = color;
+      ctx.fillRect(-width/2, 0, width, height);
+      
+      // Draw bone ends
+      ctx.beginPath();
+      ctx.arc(0, 0, width, 0, Math.PI * 2);
+      ctx.arc(0, height, width, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw bone details
+      ctx.beginPath();
+      ctx.arc(-width * 0.6, width * 0.6, width * 0.4, 0, Math.PI * 2);
+      ctx.arc(width * 0.6, width * 0.6, width * 0.4, 0, Math.PI * 2);
+      ctx.arc(-width * 0.6, height - width * 0.6, width * 0.4, 0, Math.PI * 2);
+      ctx.arc(width * 0.6, height - width * 0.6, width * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.restore();
+    }
+    
+    // GASTER BLASTER
+    function drawGasterBlaster(x, y, angle, scale, frame) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.scale(scale, scale);
+      
+      // Skull
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.moveTo(-20, -15);
+      ctx.lineTo(20, -15);
+      ctx.lineTo(25, 0);
+      ctx.lineTo(20, 15);
+      ctx.lineTo(-20, 15);
+      ctx.lineTo(-25, 0);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Eyes
+      ctx.fillStyle = "#000";
+      ctx.beginPath();
+      ctx.arc(-10, 0, 5, 0, Math.PI * 2);
+      ctx.arc(10, 0, 5, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Jaw
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.moveTo(-20, 15);
+      ctx.lineTo(20, 15);
+      ctx.lineTo(15, 30);
+      ctx.lineTo(-15, 30);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Beam
+      if (frame >= 10) {
+        ctx.fillStyle = "#3cf8ff";
+        ctx.globalAlpha = 0.7;
+        ctx.fillRect(-15, 30, 30, 400);
+        ctx.globalAlpha = 1;
+      }
+      
+      ctx.restore();
+    }
+    
+    // PLATFORM
+    function drawPlatform(x, y, width, height, color = "#fff") {
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, width, height);
+      ctx.restore();
+    }
+
+    // --- Attack Types ---
+    
+    // 1. OPENING BARRAGE - Bones from both sides
+    function openingBarrage() {
+      let timer = 0, localBones = [];
+      return {
+        update(dt) {
+          timer += dt;
+          if (timer < 3000 && timer % 150 < 16) {
+            let side = Math.random() > 0.5 ? ARENA.x - 20 : ARENA.x + ARENA.w + 20;
+            let vy = -1 + Math.random() * 2;
+            let vx = side < ARENA.x ? 4 + Math.random() * 2 : -4 - Math.random() * 2;
+            let y = ARENA.y + Math.random() * ARENA.h;
+            localBones.push({
+              x: side, 
+              y: y, 
+              vx: vx, 
+              vy: vy, 
+              width: 8,
+              height: 32, 
+              blue: Math.random() < 0.33
+            });
+          }
+          
+          // Update bones position
+          for (let b of localBones) {
+            b.x += b.vx; 
+            b.y += b.vy;
+            
+            // Check collision with player
+            if (player.invuln <= 0 &&
+                b.x + b.width/2 > player.x - player.size &&
+                b.x - b.width/2 < player.x + player.size &&
+                b.y > player.y - player.size &&
+                b.y + b.height < player.y + player.size) {
+              hitSoul(b.blue ? 5 : 10);
+              soundEffects.boneHit.play();
+            }
+          }
+          
+          // Remove bones that are offscreen
+          localBones = localBones.filter(b => {
+            return b.x > ARENA.x - 60 && 
+                   b.x < ARENA.x + ARENA.w + 60 &&
+                   b.y > ARENA.y - 60 &&
+                   b.y < ARENA.y + ARENA.h + 60;
+          });
+          
+          this.localBones = localBones;
+        },
+        draw(ctx) {
+          for (let b of this.localBones) {
+            drawBone(b.x, b.y, b.width, b.height, b.blue ? "#32dfff" : "#fff"); 
+          }
+        },
+        get finished() { return timer > 4000; },
+        localBones: localBones
+      };
+    }
+    
+    // 2. BLUE ATTACK - Turn soul blue and introduce gravity
+    function blueSoulAttack() {
+      let timer = 0;
+      let stage = 0;
+      let localPlatforms = [];
+      let localBones = [];
+      
+      return {
+        init() {
+          player.blue = true;
+          player.gravity = 0.3;
+          showDialogBox("* You feel your sins crawling on your back.");
+          
+          // Create initial platform
+          localPlatforms.push({
+            x: ARENA.x + 50,
+            y: ARENA.y + ARENA.h - 20,
+            width: 200,
+            height: 10
+          });
+        },
+        update(dt) {
+          timer += dt;
+          
+          // Apply gravity to player
+          if (player.blue) {
+            player.vy += player.gravity;
+            player.y += player.vy;
+            
+            // Check if player is on a platform
+            player.platform = null;
+            for (let p of localPlatforms) {
+              if (player.y + player.size >= p.y && 
+                  player.y + player.size <= p.y + 5 &&
+                  player.x >= p.x && 
+                  player.x <= p.x + p.width) {
+                player.platform = p;
+                player.y = p.y - player.size;
+                player.vy = 0;
+                break;
+              }
+            }
+            
+            // Jumping
+            if (player.platform && (keys.ArrowUp || keys.w)) {
+              player.vy = -8;
+              player.platform = null;
+            }
+          }
+          
+          // Stage progression
+          if (timer > 1000 && stage === 0) {
+            stage = 1;
+            // Bone walls
+            for (let i = 0; i < 5; i++) {
+              localBones.push({
+                x: ARENA.x + 30,
+                y: ARENA.y + ARENA.h - 30 - i * 30,
+                vx: 0,
+                vy: 0,
+                width: 8,
+                height: 25,
+                blue: false
+              });
+              
+              localBones.push({
+                x: ARENA.x + ARENA.w - 30,
+                y: ARENA.y + ARENA.h - 30 - i * 30,
+                vx: 0,
+                vy: 0,
+                width: 8,
+                height: 25,
+                blue: false
+              });
+            }
+          }
+          
+          if (timer > 3000 && stage === 1) {
+            stage = 2;
+            // Second platform
+            localPlatforms.push({
+              x: ARENA.x + ARENA.w - 250,
+              y: ARENA.y + 60,
+              width: 200,
+              height: 10
+            });
+            
+            // Bone ceiling
+            for (let i = 0; i < 10; i++) {
+              localBones.push({
+                x: ARENA.x + 30 + i * 25,
+                y: ARENA.y + 20,
+                vx: 0,
+                vy: 0,
+                width: 8,
+                height: 25,
+                blue: false
+              });
+            }
+          }
+          
+          if (timer > 5000 && stage === 2) {
+            stage = 3;
+            // Add moving bone attacks
+            for (let i = 0; i < 3; i++) {
+              localBones.push({
+                x: ARENA.x - 20,
+                y: ARENA.y + ARENA.h - 30 - i * 20,
+                vx: 3,
+                vy: 0,
+                width: 8,
+                height: 15,
+                blue: false
+              });
+            }
+          }
+          
+          // Update bones
+          for (let b of localBones) {
+            b.x += b.vx;
+            b.y += b.vy;
+            
+            // Check collision with player
+            if (player.invuln <= 0 &&
+                b.x + b.width/2 > player.x - player.size &&
+                b.x - b.width/2 < player.x + player.size &&
+                b.y > player.y - player.size &&
+                b.y + b.height < player.y + player.size) {
+              hitSoul(b.blue ? 5 : 10);
+              soundEffects.boneHit.play();
+            }
+          }
+          
+          // Remove offscreen bones
+          localBones = localBones.filter(b => {
+            return b.x > ARENA.x - 60 && 
+                   b.x < ARENA.x + ARENA.w + 60 &&
+                   b.y > ARENA.y - 60 &&
+                   b.y < ARENA.y + ARENA.h + 60;
+          });
+          
+          this.localPlatforms = localPlatforms;
+          this.localBones = localBones;
+        },
+        draw(ctx) {
+          // Draw platforms
+          for (let p of this.localPlatforms) {
+            drawPlatform(p.x, p.y, p.width, p.height);
+          }
+          
+          // Draw bones
+          for (let b of this.localBones) {
+            drawBone(b.x, b.y, b.width, b.height, b.blue ? "#32dfff" : "#fff");
+          }
+        },
+        get finished() { return timer > 8000; },
+        localPlatforms: localPlatforms,
+        localBones: localBones
+      };
+    }
+    
+    // 3. GASTER BLASTER ATTACK
+    function gasterBlasterAttack() {
+      let timer = 0;
+      let localBlasters = [];
+      let blasterWarnings = [];
+      let blastActive = false;
+      
+      return {
+        init() {
+          // Reset gravity and blue soul
+          player.blue = false;
+          player.gravity = 0;
+          player.vy = 0;
+        },
+        update(dt) {
+          timer += dt;
+          
+          // First wave of blasters
+          if (timer > 1000 && timer < 1100 && timer % 50 < 16) {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 200;
+            const x = CANVAS_WIDTH/2 + Math.cos(angle) * distance;
+            const y = CANVAS_HEIGHT/2 + Math.sin(angle) * distance;
+            
+            blasterWarnings.push({
+              x: x,
+              y: y,
+              targetX: CANVAS_WIDTH/2,
+              targetY: CANVAS_HEIGHT/2,
+              angle: Math.atan2(CANVAS_HEIGHT/2 - y, CANVAS_WIDTH/2 - x),
+              frame: 0,
+              fired: false
+            });
+          }
+          
+          // Second wave - tracking blasters
+          if (timer > 4000 && timer < 4500 && timer % 100 < 16) {
+            const sides = [
+              {x: 0, y: CANVAS_HEIGHT/2},
+              {x: CANVAS_WIDTH, y: CANVAS_HEIGHT/2},
+              {x: CANVAS_WIDTH/2, y: 0},
+              {x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT}
+            ];
+            
+            const pos = sides[Math.floor(Math.random() * sides.length)];
+            
+            blasterWarnings.push({
+              x: pos.x,
+              y: pos.y,
+              targetX: player.x,
+              targetY: player.y,
+              angle: Math.atan2(player.y - pos.y, player.x - pos.x),
+              frame: 0,
+              fired: false,
+              tracking: true
+            });
+          }
+          
+          // Final wave - circling blasters
+          if (timer > 6000 && timer < 6200 && timer % 50 < 16) {
+            const count = 8;
+            for (let i = 0; i < count; i++) {
+              const angle = (i / count) * Math.PI * 2;
+              const distance = 200;
+              const x = CANVAS_WIDTH/2 + Math.cos(angle) * distance;
+              const y = CANVAS_HEIGHT/2 + Math.sin(angle) * distance;
+              
+              blasterWarnings.push({
+                x: x,
+                y: y,
+                targetX: CANVAS_WIDTH/2,
+                targetY: CANVAS_HEIGHT/2,
+                angle: Math.atan2(CANVAS_HEIGHT/2 - y, CANVAS_WIDTH/2 - x),
+                frame: 0,
+                fired: false,
+                delay: i * 100
+              });
+            }
+          }
+          
+          // Update blaster warnings
+          for (let i = blasterWarnings.length - 1; i >= 0; i--) {
+            let b = blasterWarnings[i];
+            
+            // Delay for sequential blasters
+            if (b.delay && b.delay > 0) {
+              b.delay -= dt;
+              continue;
+            }
+            
+            b.frame++;
+            
+            // Tracking blasters follow the player
+            if (b.tracking && b.frame < 30) {
+              b.angle = Math.atan2(player.y - b.y, player.x - b.x);
+              b.targetX = player.x;
+              b.targetY = player.y;
+            }
+            
+            // Create actual blaster after warning
+            if (b.frame >= 30 && !b.fired) {
+              b.fired = true;
+              
+              // Create blaster
+              localBlasters.push({
+                x: b.x,
+                y: b.y,
+                angle: b.angle,
+                frame: 0,
+                targetX: b.targetX,
+                targetY: b.targetY
+              });
+              
+              soundEffects.blaster.play();
+            }
+            
+            // Remove warning after blaster appears
+            if (b.frame >= 40) {
+              blasterWarnings.splice(i, 1);
+            }
+          }
+          
+          // Update blasters
+          for (let i = localBlasters.length - 1; i >= 0; i--) {
+            let b = localBlasters[i];
+            b.frame++;
+            
+            // Create beam
+            if (b.frame === 15) {
+              blastActive = true;
+            }
+            
+            // Check player collision with beam
+            if (b.frame >= 15 && b.frame <= 25 && player.invuln <= 0) {
+              // Calculate beam path as a line
+              const beamLength = 500;
+              const endX = b.x + Math.cos(b.angle) * beamLength;
+              const endY = b.y + Math.sin(b.angle) * beamLength;
+              
+              // Check if player is close to beam path
+              const distance = pointToLineDistance(
+                player.x, player.y,
+                b.x, b.y,
+                endX, endY
+              );
+              
+              if (distance < player.size + 12) {
+                hitSoul(15);
+                soundEffects.hit.play();
+              }
+            }
+            
+            // Remove blaster after animation
+            if (b.frame >= 35) {
+              localBlasters.splice(i, 1);
+              blastActive = false;
+            }
+          }
+          
+          this.localBlasters = localBlasters;
+          this.blasterWarnings = blasterWarnings;
+        },
+        draw(ctx) {
+          // Draw blaster warnings
+          ctx.save();
+          ctx.strokeStyle = "#ff0";
+          ctx.lineWidth = 2;
+          
+          for (let b of this.blasterWarnings) {
+            if (b.delay && b.delay > 0) continue;
+            
+            const blinkRate = b.frame > 20 ? 2 : 8;
+            if (Math.floor(b.frame / blinkRate) % 2 === 0) {
+              // Draw warning line
+              ctx.beginPath();
+              ctx.moveTo(b.x, b.y);
+              
+              // Calculate end point
+              const length = 500;
+              const endX = b.x + Math.cos(b.angle) * length;
+              const endY = b.y + Math.sin(b.angle) * length;
+              
+              ctx.lineTo(endX, endY);
+              ctx.stroke();
+            }
+          }
+          ctx.restore();
+          
+          // Draw blasters
+          for (let b of this.localBlasters) {
+            const scale = 0.8 + Math.min(1, b.frame / 10) * 0.4;
+            drawGasterBlaster(b.x, b.y, b.angle, scale, b.frame);
+          }
+        },
+        get finished() { return timer > 7500 && localBlasters.length === 0; },
+        localBlasters: localBlasters,
+        blasterWarnings: blasterWarnings
+      };
+    }
+    
+    // 4. BONE CORRIDOR ATTACK
+    function boneCorridorAttack() {
+      let timer = 0;
+      let localBones = [];
+      let pattern = 0;
+      
+      return {
+        init() {
+          // Reset to normal soul
+          player.blue = false;
+          player.gravity = 0;
+          player.vy = 0;
+          
+          // Narrow the arena
+          resizeArena(ARENA.x + 50, ARENA.y, ARENA.w - 100, ARENA.h);
+        },
+        update(dt) {
+          timer += dt;
+          
+          // Create bone patterns
+          if (timer % 800 < 16) {
+            pattern = (pattern + 1) % 3;
+            
+            switch(pattern) {
+              case 0: // Alternating heights
+                for (let i = 0; i < 8; i++) {
+                  const height = i % 2 === 0 ? 30 : 60;
+                  localBones.push({
+                    x: ARENA.x + ARENA.w + 30 + i * 30,
+                    y: ARENA.y + ARENA.h - height,
+                    vx: -4,
+                    vy: 0,
+                    width: 8,
+                    height: height,
+                    blue: false
+                  });
+                  
+                  localBones.push({
+                    x: ARENA.x + ARENA.w + 30 + i * 30,
+                    y: ARENA.y,
+                    vx: -4,
+                    vy: 0,
+                    width: 8,
+                    height: i % 2 === 0 ? 60 : 30,
+                    blue: false
+                  });
+                }
+                break;
+                
+              case 1: // Center gap
+                for (let i = 0; i < 8; i++) {
+                  // Bottom bones
+                  localBones.push({
+                    x: ARENA.x + ARENA.w + 30 + i * 30,
+                    y: ARENA.y + ARENA.h - 40,
+                    vx: -4,
+                    vy: 0,
+                    width: 8,
+                    height: 40,
+                    blue: false
+                  });
+                  
+                  // Top bones
+                  localBones.push({
+                    x: ARENA.x + ARENA.w + 30 + i * 30,
+                    y: ARENA.y,
+                    vx: -4,
+                    vy: 0,
+                    width: 8,
+                    height: 40,
+                    blue: false
+                  });
+                }
+                break;
+                
+              case 2: // Blue bones
+                for (let i = 0; i < 8; i++) {
+                  localBones.push({
+                    x: ARENA.x + ARENA.w + 30 + i * 30,
+                    y: ARENA.y,
+                    vx: -4,
+                    vy: 0,
+                    width: 12,
+                    height: ARENA.h,
+                    blue: true
+                  });
+                }
+                break;
+            }
+          }
+          
+          // Update bones
+          for (let b of localBones) {
+            b.x += b.vx;
+            b.y += b.vy;
+            
+            // Check collision with player (skip if blue bone and player not moving)
+            if (player.invuln <= 0 &&
+                b.x + b.width/2 > player.x - player.size &&
+                b.x - b.width/2 < player.x + player.size &&
+                b.y < player.y + player.size &&
+                b.y + b.height > player.y - player.size) {
+              
+              // Blue bone collision only if player is moving
+              if (b.blue) {
+                const isMoving = 
+                  (keys.ArrowLeft || keys.ArrowRight || 
+                   keys.ArrowUp || keys.ArrowDown ||
+                   keys.w || keys.a || keys.s || keys.d);
+                
+                if (isMoving) {
+                  hitSoul(8);
+                  soundEffects.boneHit.play();
+                }
+              } else {
+                hitSoul(10);
+                soundEffects.boneHit.play();
+              }
+            }
+          }
+          
+          // Remove offscreen bones
+          localBones = localBones.filter(b => {
+            return b.x > ARENA.x - 60;
+          });
+          
+          this.localBones = localBones;
+        },
+        draw(ctx) {
+          for (let b of this.localBones) {
+            drawBone(b.x, b.y, b.width, b.height, b.blue ? "#32dfff" : "#fff");
+          }
+        },
+        get finished() { return timer > 6000 && localBones.length === 0; },
+        cleanup() {
+          // Restore the arena
+          resizeArena(170, 150, 300, 130);
+        },
+        localBones: localBones
+      };
+    }
+    
+    // 5. PLATFORM JUMP ATTACK
+    function platformJumpAttack() {
+      let timer = 0;
+      let localPlatforms = [];
+      let localBones = [];
+      
+      return {
+        init() {
+          // Enable blue soul
+          player.blue = true;
+          player.gravity = 0.3;
+          
+          // Create initial platforms
+          localPlatforms.push({
+            x: ARENA.x + 20,
+            y: ARENA.y + ARENA.h - 20,
+            width: 80,
+            height: 10
+          });
+          
+          localPlatforms.push({
+            x: ARENA.x + ARENA.w - 100,
+            y: ARENA.y + ARENA.h - 20,
+            width: 80,
+            height: 10
+          });
+          
+          localPlatforms.push({
+            x: ARENA.x + ARENA.w/2 - 40,
+            y: ARENA.y + ARENA.h - 60,
+            width: 80,
+            height: 10
+          });
+        },
+        update(dt) {
+          timer += dt;
+          
+          // Apply gravity to player
+          if (player.blue) {
+            player.vy += player.gravity;
+            player.y += player.vy;
+            
+            // Check if player is on a platform
+            player.platform = null;
+            for (let p of localPlatforms) {
+              if (player.y + player.size >= p.y && 
+                  player.y + player.size <= p.y + 5 &&
+                  player.x >= p.x && 
+                  player.x <= p.x + p.width) {
+                player.platform = p;
+                player.y = p.y - player.size;
+                player.vy = 0;
+                break;
+              }
+            }
+            
+            // Jumping
+            if (player.platform && (keys.ArrowUp || keys.w)) {
+              player.vy = -8;
+              player.platform = null;
+            }
+            
+            // Death if falling out of the arena
+            if (player.y > ARENA.y + ARENA.h + 50) {
+              hitSoul(30);
+              // Reset position
+              player.y = ARENA.y + 50;
+              player.vy = 0;
+            }
+          }
+          
+          // Create rising bones every 2 seconds
+          if (timer > 1000 && timer % 2000 < 16) {
+            for (let i = 0; i < 8; i++) {
+              localBones.push({
+                x: ARENA.x + 20 + i * (ARENA.w - 40) / 7,
+                y: ARENA.y + ARENA.h + 20,
+                vx: 0,
+                vy: -3,
+                width: 8,
+                height: 20,
+                blue: false
+              });
+            }
+          }
+          
+          // Add moving platforms
+          if (timer > 3000 && timer % 3000 < 16) {
+            // Moving platform from left to right
+            localPlatforms.push({
+              x: ARENA.x - 80,
+              y: ARENA.y + ARENA.h/2,
+              width: 60,
+              height: 10,
+              vx: 2,
+              vy: 0
+            });
+            
+            // Moving platform from right to left
+            localPlatforms.push({
+              x: ARENA.x + ARENA.w + 20,
+              y: ARENA.y + ARENA.h/3,
+              width: 60,
+              height: 10,
+              vx: -2,
+              vy: 0
+            });
+          }
+          
+          // Update platforms
+          for (let i = localPlatforms.length - 1; i >= 0; i--) {
+            let p = localPlatforms[i];
+            
+            // Update position if moving
+            if (p.vx || p.vy) {
+              p.x += p.vx || 0;
+              p.y += p.vy || 0;
+              
+              // If player is on this platform, move them too
+              if (player.platform === p) {
+                player.x += p.vx || 0;
+              }
+              
+              // Remove if offscreen
+              if (p.x < ARENA.x - 100 || p.x > ARENA.x + ARENA.w + 100) {
+                localPlatforms.splice(i, 1);
+              }
+            }
+          }
+          
+          // Update bones
+          for (let i = localBones.length - 1; i >= 0; i--) {
+            let b = localBones[i];
+            b.x += b.vx || 0;
+            b.y += b.vy || 0;
+            
+            // Check collision with player
+            if (player.invuln <= 0 &&
+                b.x + b.width/2 > player.x - player.size &&
+                b.x - b.width/2 < player.x + player.size &&
+                b.y < player.y + player.size &&
+                b.y + b.height > player.y - player.size) {
+              hitSoul(b.blue ? 5 : 10);
+              soundEffects.boneHit.play();
+            }
+            
+            // Remove if offscreen
+            if (b.y < ARENA.y - 40) {
+              localBones.splice(i, 1);
+            }
+          }
+          
+          this.localPlatforms = localPlatforms;
+          this.localBones = localBones;
+        },
+        draw(ctx) {
+          // Draw platforms
+          for (let p of this.localPlatforms) {
+            drawPlatform(p.x, p.y, p.width, p.height);
+          }
+          
+          // Draw bones
+          for (let b of this.localBones) {
+            drawBone(b.x, b.y, b.width, b.height, b.blue ? "#32dfff" : "#fff");
+          }
+        },
+        get finished() { return timer > 8000; },
+        cleanup() {
+          // Reset player
+          player.blue = false;
+          player.gravity = 0;
+          player.vy = 0;
+        },
+        localPlatforms: localPlatforms,
+        localBones: localBones
+      };
+    }
+    
+    // 6. FINAL ATTACK - Combination of all previous attacks
+    function finalAttack() {
+      let timer = 0;
+      let stage = 0;
+      let localBones = [];
+      let localBlasters = [];
+      let blasterWarnings = [];
+      let localPlatforms = [];
+      
+      return {
+        init() {
+          showDialogBox("* Get dunked on!");
+          // Start with blue soul
+          player.blue = true;
+          player.gravity = 0.3;
+          
+          // Create initial platform
+          localPlatforms.push({
+            x: ARENA.x + 50,
+            y: ARENA.y + ARENA.h - 20,
+            width: 200,
+            height: 10
+          });
+        },
+        update(dt) {
+          timer += dt;
+          
+          // STAGE 1: Initial bone barrage
+          if (timer < 3000 && timer % 200 < 16) {
+            for (let i = 0; i < 5; i++) {
+              const side = Math.random() > 0.5 ? ARENA.x - 20 : ARENA.x + ARENA.w + 20;
+              const vx = side < ARENA.x ? 4 : -4;
+              const y = ARENA.y + 20 + i * 20;
+              
+              localBones.push({
+                x: side,
+                y: y,
+                vx: vx,
+                vy: 0,
+                width: 8,
+                height: 15,
+                blue: Math.random() < 0.3
+              });
+            }
+          }
+          
+          // STAGE 2: Gaster Blasters
+          if (timer > 3000 && timer < 6000 && timer % 500 < 16) {
+            // Remove blue soul for blasters
+            player.blue = false;
+            player.gravity = 0;
+            player.vy = 0;
+            
+            // Clear platforms
+            localPlatforms = [];
+            
+            // Add blasters in a circle
+            const count = 4;
+            for (let i = 0; i < count; i++) {
+              const angle = (i / count) * Math.PI * 2 + timer/1000;
+              const distance = 200;
+              const x = CANVAS_WIDTH/2 + Math.cos(angle) * distance;
+              const y = CANVAS_HEIGHT/2 + Math.sin(angle) * distance;
+              
+              blasterWarnings.push({
+                x: x,
+                y: y,
+                targetX: CANVAS_WIDTH/2,
+                targetY: CANVAS_HEIGHT/2,
+                angle: Math.atan2(CANVAS_HEIGHT/2 - y, CANVAS_WIDTH/2 - x),
+                frame: 0,
+                fired: false,
+                delay: i * 100
+              });
+            }
+          }
+          
+          // STAGE 3: Platform jumping
+          if (timer > 6000 && stage < 3) {
+            stage = 3;
+            // Restore blue soul
+            player.blue = true;
+            player.gravity = 0.3;
+            
+            // Create platforms
+            localPlatforms.push({
+              x: ARENA.x + 20,
+              y: ARENA.y + ARENA.h - 20,
+              width: 60,
+              height: 10
+            });
+            
+            localPlatforms.push({
+              x: ARENA.x + ARENA.w - 80,
+              y: ARENA.y + ARENA.h - 20,
+              width: 60,
+              height: 10
+            });
+            
+            localPlatforms.push({
+              x: ARENA.x + ARENA.w/2 - 30,
+              y: ARENA.y + ARENA.h - 60,
+              width: 60,
+              height: 10
+            });
+          }
+          
+          // Rising bones during platform stage
+          if (timer > 6000 && timer < 9000 && timer % 1000 < 16) {
+            for (let i = 0; i < 10; i++) {
+              localBones.push({
+                x: ARENA.x + 10 + i * (ARENA.w - 20) / 9,
+                y: ARENA.y + ARENA.h + 20,
+                vx: 0,
+                vy: -3,
+                width: 8,
+                height: 20,
+                blue: false
+              });
+            }
+          }
+          
+          // STAGE 4: Final blaster barrage
+          if (timer > 9000 && stage < 4) {
+            stage = 4;
+            // Remove blue soul
+            player.blue = false;
+            player.gravity = 0;
+            player.vy = 0;
+            
+            // Clear platforms
+            localPlatforms = [];
+            
+            showDialogBox("* You're gonna have a bad time.");
+          }
+          
+          // Final blaster attack
+          if (timer > 10000 && timer < 12000 && timer % 300 < 16) {
+            const positions = [
+              {x: 0, y: 0},
+              {x: CANVAS_WIDTH, y: 0},
+              {x: 0, y: CANVAS_HEIGHT},
+              {x: CANVAS_WIDTH, y: CANVAS_HEIGHT}
+            ];
+            
+            for (let pos of positions) {
+              blasterWarnings.push({
+                x: pos.x,
+                y: pos.y,
+                targetX: player.x,
+                targetY: player.y,
+                angle: Math.atan2(player.y - pos.y, player.x - pos.x),
+                frame: 0,
+                fired: false,
+                tracking: true
+              });
+            }
+          }
+          
+          // Apply gravity to player if blue soul
+          if (player.blue) {
+            player.vy += player.gravity;
+            player.y += player.vy;
+            
+            // Check if player is on a platform
+            player.platform = null;
+            for (let p of localPlatforms) {
+              if (player.y + player.size >= p.y && 
+                  player.y + player.size <= p.y + 5 &&
+                  player.x >= p.x && 
+                  player.x <= p.x + p.width) {
+                player.platform = p;
+                player.y = p.y - player.size;
+                player.vy = 0;
+                break;
+              }
+            }
+            
+            // Jumping
+            if (player.platform && (keys.ArrowUp || keys.w)) {
+              player.vy = -8;
+              player.platform = null;
+            }
+            
+            // Death if falling out of the arena
+            if (player.y > ARENA.y + ARENA.h + 50) {
+              hitSoul(30);
+              // Reset position
+              player.y = ARENA.y + 50;
+              player.vy = 0;
+            }
+          }
+          
+          // Update blaster warnings
+          for (let i = blasterWarnings.length - 1; i >= 0; i--) {
+            let b = blasterWarnings[i];
+            
+            // Delay for sequential blasters
+            if (b.delay && b.delay > 0) {
+              b.delay -= dt;
+              continue;
+            }
+            
+            b.frame++;
+            
+            // Tracking blasters follow the player
+            if (b.tracking && b.frame < 30) {
+              b.angle = Math.atan2(player.y - b.y, player.x - b.x);
+              b.targetX = player.x;
+              b.targetY = player.y;
+            }
+            
+            // Create actual blaster after warning
+            if (b.frame >= 30 && !b.fired) {
+              b.fired = true;
+              
+              // Create blaster
+              localBlasters.push({
+                x: b.x,
+                y: b.y,
+                angle: b.angle,
+                frame: 0,
+                targetX: b.targetX,
+                targetY: b.targetY
+              });
+              
+              soundEffects.blaster.play();
+            }
+            
+            // Remove warning after blaster appears
+            if (b.frame >= 40) {
+              blasterWarnings.splice(i, 1);
+            }
+          }
+          
+          // Update blasters
+          for (let i = localBlasters.length - 1; i >= 0; i--) {
+            let b = localBlasters[i];
+            b.frame++;
+            
+            // Check player collision with beam
+            if (b.frame >= 15 && b.frame <= 25 && player.invuln <= 0) {
+              // Calculate beam path as a line
+              const beamLength = 500;
+              const endX = b.x + Math.cos(b.angle) * beamLength;
+              const endY = b.y + Math.sin(b.angle) * beamLength;
+              
+              // Check if player is close to beam path
+              const distance = pointToLineDistance(
+                player.x, player.y,
+                b.x, b.y,
+                endX, endY
+              );
+              
+              if (distance < player.size + 12) {
+                hitSoul(15);
+                soundEffects.hit.play();
+              }
+            }
+            
+            // Remove blaster after animation
+            if (b.frame >= 35) {
+              localBlasters.splice(i, 1);
+            }
+          }
+          
+          // Update bones
+          for (let i = localBones.length - 1; i >= 0; i--) {
+            let b = localBones[i];
+            b.x += b.vx || 0;
+            b.y += b.vy || 0;
+            
+            // Check collision with player
+            if (player.invuln <= 0 &&
+                b.x + b.width/2 > player.x - player.size &&
+                b.x - b.width/2 < player.x + player.size &&
+                b.y < player.y + player.size &&
+                b.y + b.height > player.y - player.size) {
+              
+              // Blue bone collision only if player is moving
+              if (b.blue) {
+                const isMoving = 
+                  (keys.ArrowLeft || keys.ArrowRight || 
+                   keys.ArrowUp || keys.ArrowDown ||
+                   keys.w || keys.a || keys.s || keys.d);
+                
+                if (isMoving) {
+                  hitSoul(8);
+                  soundEffects.boneHit.play();
+                }
+              } else {
+                hitSoul(10);
+                soundEffects.boneHit.play();
+              }
+            }
+            
+            // Remove bones that are offscreen
+            if (b.x < ARENA.x - 40 || 
+                b.x > ARENA.x + ARENA.w + 40 ||
+                b.y < ARENA.y - 40 ||
+                b.y > ARENA.y + ARENA.h + 40) {
+              localBones.splice(i, 1);
+            }
+          }
+          
+          this.localPlatforms = localPlatforms;
+          this.localBones = localBones;
+          this.localBlasters = localBlasters;
+          this.blasterWarnings = blasterWarnings;
+        },
+        draw(ctx) {
+          // Draw platforms
+          for (let p of this.localPlatforms) {
+            drawPlatform(p.x, p.y, p.width, p.height);
+          }
+          
+          // Draw bones
+          for (let b of this.localBones) {
+            drawBone(b.x, b.y, b.width, b.height, b.blue ? "#32dfff" : "#fff");
+          }
+          
+          // Draw blaster warnings
+          ctx.save();
+          ctx.strokeStyle = "#ff0";
+          ctx.lineWidth = 2;
+          
+          for (let b of this.blasterWarnings) {
+            if (b.delay && b.delay > 0) continue;
+            
+            const blinkRate = b.frame > 20 ? 2 : 8;
+            if (Math.floor(b.frame / blinkRate) % 2 === 0) {
+              // Draw warning line
+              ctx.beginPath();
+              ctx.moveTo(b.x, b.y);
+              
+              // Calculate end point
+              const length = 500;
+              const endX = b.x + Math.cos(b.angle) * length;
+              const endY = b.y + Math.sin(b.angle) * length;
+              
+              ctx.lineTo(endX, endY);
+              ctx.stroke();
+            }
+          }
+          ctx.restore();
+          
+          // Draw blasters
+          for (let b of this.localBlasters) {
+            const scale = 0.8 + Math.min(1, b.frame / 10) * 0.4;
+            drawGasterBlaster(b.x, b.y, b.angle, scale, b.frame);
+          }
+        },
+        get finished() { return timer > 12000 && localBlasters.length === 0 && localBones.length === 0; },
+        cleanup() {
+          // Reset player
+          player.blue = false;
+          player.gravity = 0;
+          player.vy = 0;
+        },
+        localPlatforms: localPlatforms,
+        localBones: localBones,
+        localBlasters: localBlasters,
+        blasterWarnings: blasterWarnings
+      };
+    }
+
+    // --- HELPER FUNCTIONS ---
+    
+    // Resize the arena
+    function resizeArena(x, y, w, h) {
+      ARENA.x = x;
+      ARENA.y = y;
+      ARENA.w = w;
+      ARENA.h = h;
+    }
+    
+    // Point to line distance (for blaster beam collision)
+    function pointToLineDistance(px, py, x1, y1, x2, y2) {
+      const A = px - x1;
+      const B = py - y1;
+      const C = x2 - x1;
+      const D = y2 - y1;
+      
+      const dot = A * C + B * D;
+      const len_sq = C * C + D * D;
+      let param = -1;
+      
+      if (len_sq !== 0) {
+        param = dot / len_sq;
+      }
+      
+      let xx, yy;
+      
+      if (param < 0) {
+        xx = x1;
+        yy = y1;
+      } else if (param > 1) {
+        xx = x2;
+        yy = y2;
+      } else {
+        xx = x1 + param * C;
+        yy = y1 + param * D;
+      }
+      
+      const dx = px - xx;
+      const dy = py - yy;
+      
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    function hitSoul(dmg) {
+      if (player.invuln > 0) return;
+      
+      // Create hit particles
+      for (let i = 0; i < 8; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1 + Math.random() * 3;
+        particles.push({
+          x: player.x,
+          y: player.y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 30 + Math.random() * 30,
+          color: "#f00"
+        });
+      }
+      
+      // Apply karma (poison) effect
+      karma = Math.min(karma + dmg/2, 10);
+      
+      // Reduce HP
+      hp -= dmg;
+      hp = Math.max(0, hp);
+      updateHPDisplay();
+      
+      // Set invulnerability
+      player.invuln = 1000;
+    }
+    
+    function updateHPDisplay() {
+      document.getElementById('hp').textContent = `HP ${hp}/${maxhp}`;
+      document.getElementById('hpbar').textContent = drawHPBar(hp, maxhp);
+    }
+
+    // --- Engine: HP Bar, Arena, Soul, Menu, Dialog ---
+    function drawHPBar(hp, maxhp) {
+      let percent = hp / maxhp, bar = "", length = 20;
+      for (let i = 0; i < length; i++)
+        bar += (i < Math.round(length * percent)) ? "|" : ".";
+      return bar;
+    }
+    
+    function drawArena() {
+      ctx.save();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(ARENA.x, ARENA.y, ARENA.w, ARENA.h);
+      ctx.restore();
+    }
+    
+    function drawSoul() {
+      ctx.save();
+      
+      // Draw soul shadow for blue soul
+      if (player.blue) {
+        ctx.fillStyle = "rgba(0, 0, 255, 0.2)";
+        ctx.beginPath();
+        ctx.arc(player.x, player.y + 10, player.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Soul color
+      ctx.fillStyle = player.blue ? "#0000ff" : "#ff0000";
+      
+      // Make soul blink when invulnerable
+      if (player.invuln > 0 && Math.floor(player.invuln / 100) % 2 === 0) {
+        ctx.globalAlpha = 0.5;
+      }
+      
+      let s = player.size, x = player.x, y = player.y;
+      
+      // Draw soul
+      ctx.beginPath();
+      ctx.moveTo(x, y - s/2);
+      ctx.lineTo(x - s/2, y);
+      ctx.lineTo(x, y + s/2);
+      ctx.lineTo(x + s/2, y);
+      ctx.closePath();
+      ctx.fill();
+      
+      ctx.restore();
+    }
+    
+    // Draw particles
+    function drawParticles() {
+      ctx.save();
+      
+      for (let p of particles) {
+        ctx.globalAlpha = p.life / 60;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      ctx.restore();
+    }
+    
+    // Update particles
+    function updateParticles(dt) {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        let p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= dt / 16;
+        
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+        }
+      }
+    }
+
+    // --- MENU, DIALOG, INPUT ---
+    const keys = {};
+    window.addEventListener('keydown', (e) => {
+      keys[e.key] = true;
+      
+      if (phase === "menu") {
+        if (e.key === "ArrowLeft" && menuIndex > 0) { 
+          menuIndex--; 
+          updateMenu(); 
+        }
+        if (e.key === "ArrowRight" && menuIndex < 3) { 
+          menuIndex++; 
+          updateMenu(); 
+        }
+        if (e.key === "Enter" || e.key === "z" || e.key === "Z") { 
+          if (menuIndex === 0) { 
+            startFight(); 
+          } else if (menuIndex === 1) {
+            showDialogBox("* You tell Sans you don't want to fight.");
+            phase = "dialog";
+          } else if (menuIndex === 2) {
+            showDialogBox("* Your inventory is empty.");
+            phase = "dialog";
+          } else if (menuIndex === 3) {
+            showDialogBox("* Mercy? At this point? Really?");
+            phase = "dialog";
+          }
+        }
+      }
+      
+      if (phase === "dialog" && (e.key === "Enter" || e.key === "z" || e.key === "Z")) {
+        nextDialog();
+      }
+    });
+    
+    window.addEventListener('keyup', (e) => { 
+      keys[e.key] = false; 
+    });
+
+    function updateMenu() {
+      document.querySelectorAll('#menu span').forEach((el, i) => {
+        el.classList.toggle('selected', i === menuIndex);
+      });
+    }
+    
+    function showDialogBox(text) {
+      let dialog = document.getElementById('dialog');
+      dialog.textContent = text;
+      dialog.style.display = "block";
+    }
+    
+    function hideDialogBox() {
+      let dialog = document.getElementById('dialog');
+      dialog.style.display = "none";
+    }
+    
+    function nextDialog() {
+      if (dialogQueue.length) {
+        showDialogBox(dialogQueue.shift());
+      } else {
+        hideDialogBox();
+        phase = "menu";
+      }
+    }
+
+    // --- Main Engine Loop ---
+    let last = performance.now();
+    function loop(now) {
+      let dt = now - last; 
+      last = now;
+      update(dt);
+      draw();
+      
+      // Apply karma effect
+      if (karma > 0 && phase === "fight" && now % 1000 < 16) {
+        hp = Math.max(0, hp - 1);
+        karma = Math.max(0, karma - 0.5);
+        updateHPDisplay();
+      }
+      
+      requestAnimationFrame(loop);
+    }
+
+    function update(dt) {
+      if (phase === "fight" && currentAttack) {
+        // Move player
+        let vx = 0, vy = 0;
+        
+        if (keys.ArrowLeft || keys.a) vx = -1;
+        if (keys.ArrowRight || keys.d) vx = 1;
+        
+        // Y movement restricted if on blue soul with gravity
+        if (!player.blue || player.platform) {
+          if (keys.ArrowUp || keys.w) vy = -1;
+          if (keys.ArrowDown || keys.s) vy = 1;
+        }
+        
+        let len = Math.sqrt(vx * vx + vy * vy);
+        if (len) { 
+          vx /= len; 
+          vy /= len; 
+        }
+        
+        player.x += vx * player.speed;
+        
+        // Only apply vy for non-gravity movement
+        if (!player.blue) {
+          player.y += vy * player.speed;
+        }
+        
+        // Keep player within arena bounds
+        player.x = Math.max(ARENA.x + player.size, Math.min(ARENA.x + ARENA.w - player.size, player.x));
+        
+        if (!player.blue) {
+          player.y = Math.max(ARENA.y + player.size, Math.min(ARENA.y + ARENA.h - player.size, player.y));
+        }
+        
+        // Initialize current attack if needed
+        if (currentAttack.init && !currentAttack.initialized) {
+          currentAttack.init();
+          currentAttack.initialized = true;
+        }
+        
+        // Update current attack
+        currentAttack.update(dt);
+        
+        // Move to next attack if finished
+        if (currentAttack.finished) {
+          // Run cleanup if needed
+          if (currentAttack.cleanup) {
+            currentAttack.cleanup();
+          }
+          
+          nextAttack();
+        }
+        
+        // Update invulnerability timer
+        if (player.invuln > 0) {
+          player.invuln -= dt;
+        }
+        
+        // Update particles
+        updateParticles(dt);
+        
+        // Game over if HP <= 0
+        if (hp <= 0) {
+          phase = "dead";
+          gameState.playerDied = true;
+        }
+      }
+    }
+    
+    function draw() {
+      ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      
+      // Draw Sans
+      let sansExpression = "normal";
+      
+      if (phase === "fight") {
+        sansExpression = "serious";
+        if (gameState.turn > 3) sansExpression = "sweat";
+      }
+      
+      drawUndertaleSans(CANVAS_WIDTH / 2, 10, sansExpression);
+      
+      // Draw arena
+      drawArena();
+      
+      // Draw current attack
+      if (phase === "fight" && currentAttack) {
+        currentAttack.draw(ctx);
+      }
+      
+      // Draw soul
+      drawSoul();
+      
+      // Draw particles
+      drawParticles();
+      
+      // Draw game over screen
+      if (phase === "dead") {
+        ctx.save();
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = "#ff0000";
+        ctx.font = "38px Determination";
+        ctx.textAlign = "center";
+        ctx.fillText("GAME OVER", 320, 240);
+        ctx.fillStyle = "#fff";
+        ctx.font = "20px Determination";
+        ctx.fillText("Stay determined...", 320, 280);
+        ctx.fillText("Refresh to retry", 320, 320);
+        ctx.restore();
+      }
+      
+      // Draw victory screen
+      if (phase === "victory") {
+        ctx.save();
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = "#ffff00";
+        ctx.font = "38px Determination";
+        ctx.textAlign = "center";
+        ctx.fillText("VICTORY", 320, 240);
+        ctx.fillStyle = "#fff";
+        ctx.font = "20px Determination";
+        ctx.fillText("You defeated Sans", 320, 280);
+        ctx.fillText("Refresh to play again", 320, 320);
+        ctx.restore();
+      }
+    }
+
+    // --- HUD INIT ---
+    document.getElementById('hp').textContent = `HP ${hp}/${maxhp}`;
+    document.getElementById('hpbar').textContent = drawHPBar(hp, maxhp);
+    document.getElementById('lv').textContent = `LV 19`;
+    showDialogBox(dialogQueue.shift());
+    updateMenu();
+
+    // --- FIGHT START ---
+    function startFight() {
+      phase = "fight";
+      document.getElementById('menu').style.display = "none";
+      hideDialogBox();
+      
+      // Reset player position
+      player.x = ARENA.x + ARENA.w / 2;
+      player.y = ARENA.y + ARENA.h / 2;
+      
+      // Define all attacks
+      attacks = [
+        openingBarrage,
+        blueSoulAttack,
+        gasterBlasterAttack,
+        boneCorridorAttack,
+        platformJumpAttack,
+        finalAttack
+      ];
+      
+      attackPhase = 0;
+      gameState.turn = 1;
+      
+      // Start first attack
+      currentAttack = attacks[attackPhase]();
+    }
+    
+    function nextAttack() {
+      attackPhase++;
+      gameState.turn++;
+      
+      if (attackPhase >= attacks.length) {
+        // End fight with victory
+        phase = "victory";
+        document.getElementById('menu').style.display = "none";
+        return;
+      }
+      
+      // Switch back to menu or start next attack
+      phase = "menu";
+      document.getElementById('menu').style.display = "flex";
+      
+      // Reset player
+      player.blue = false;
+      player.gravity = 0;
+      player.vy = 0;
+      player.x = ARENA.x + ARENA.w / 2;
+      player.y = ARENA.y + ARENA.h / 2;
+    }
+    
+    // Special dialog after some turns
+    function getSpecialDialog() {
+      if (gameState.turn === 2) {
+        return ["* You feel like you're going to have a bad time."];
+      } else if (gameState.turn === 3) {
+        return ["* Smells like bones."];
+      } else if (gameState.turn === 4) {
+        return ["* Sans looks tired."];
+      } else if (gameState.turn === 5) {
+        return ["* You can feel your sins crawling on your back."];
+      }
+      return [];
+    }
+
+    loop(performance.now());
+  </script>
+</body>
+</html>
